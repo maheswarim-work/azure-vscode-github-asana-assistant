@@ -117,10 +117,36 @@ class AIAssistant:
     async def _handle_asana_action(self, action: str, parameters: Dict[str, Any], user_input: str) -> Dict[str, Any]:
         """Handle Asana-specific actions."""
         try:
-            if action == "create_task":
+            if action in ["create_task", "create_new_task"]:
+                # Extract task name from parameters or user input
+                task_name = parameters.get("task_name") or parameters.get("name")
+                if not task_name:
+                    # Extract from user input as fallback
+                    task_name = user_input.replace("Create a task for", "").replace("Create task", "").strip()
+                
+                task_data = {
+                    "name": task_name,
+                    "notes": parameters.get("notes", f"Task created via AI assistant: {user_input}")
+                }
+                
+                # Handle project specification
+                project_gid = parameters.get("project_gid")
+                project_name = parameters.get("project_name")
+                
+                # If project name is specified, look up the project GID
+                if project_name and not project_gid:
+                    try:
+                        projects = await self.asana_client.get_projects()
+                        matching_project = next((p for p in projects if p["name"].lower() == project_name.lower()), None)
+                        if matching_project:
+                            project_gid = matching_project["gid"]
+                    except Exception as e:
+                        # Continue without project if lookup fails
+                        pass
+                
                 task = await self.asana_client.create_task(
-                    parameters.get("project_gid"),
-                    parameters.get("task_data")
+                    project_gid,
+                    task_data
                 )
                 return {"action": "task_created", "data": task}
             
@@ -144,6 +170,10 @@ class AIAssistant:
                     parameters.get("project_gid")
                 )
                 return {"action": "tasks_found", "data": tasks}
+            
+            elif action in ["get_projects", "get_all_projects", "list_projects", "fetch_all_projects"]:
+                projects = await self.asana_client.get_projects()
+                return {"action": "projects_retrieved", "data": projects}
             
             else:
                 return {"error": f"Unknown Asana action: {action}"}

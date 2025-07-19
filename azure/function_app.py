@@ -244,11 +244,13 @@ async def github_webhook(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="health", methods=["GET"])
 def health_check(req: func.HttpRequest) -> func.HttpResponse:
     """Health check endpoint."""
+    import datetime
     return func.HttpResponse(
         json.dumps({
             "status": "healthy",
             "version": "0.1.0",
-            "timestamp": "2024-01-01T00:00:00Z"
+            "timestamp": datetime.datetime.now().isoformat(),
+            "assistant_available": ASSISTANT_AVAILABLE
         }),
         status_code=200,
         mimetype="application/json"

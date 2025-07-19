@@ -16,17 +16,31 @@ class AsanaClient:
             if not access_token:
                 raise Exception("Asana access token not found in Key Vault or environment variables")
             
-            self.client = asana.Client.access_token(access_token)
+            # Use the correct Asana client initialization
+            configuration = asana.Configuration()
+            configuration.access_token = access_token
+            api_client = asana.ApiClient(configuration)
+            self.client = asana.TasksApi(api_client)
+            self.projects_api = asana.ProjectsApi(api_client)
+            self.workspaces_api = asana.WorkspacesApi(api_client)
             self._initialized = True
     
     async def get_projects(self) -> List[Dict[str, Any]]:
         """Get all projects in the workspace."""
         await self._ensure_initialized()
         try:
-            projects = list(self.client.projects.get_projects({
-                'workspace': self.workspace_gid
-            }))
-            return projects
+            if not self.workspace_gid:
+                # Get default workspace
+                workspaces = self.workspaces_api.get_workspaces()
+                if workspaces and len(workspaces.data) > 0:
+                    self.workspace_gid = workspaces.data[0].gid
+                else:
+                    raise Exception("No workspace found")
+            
+            projects = self.projects_api.get_projects_for_workspace(
+                workspace_gid=self.workspace_gid
+            )
+            return [{"gid": p.gid, "name": p.name} for p in projects.data]
         except Exception as e:
             raise Exception(f"Failed to fetch Asana projects: {str(e)}")
     
@@ -34,30 +48,44 @@ class AsanaClient:
         """Get tasks from a specific project."""
         await self._ensure_initialized()
         try:
-            tasks = list(self.client.tasks.get_tasks({
-                'project': project_gid,
-                'completed_since': 'now' if not completed else None,
-                'opt_fields': [
-                    'name', 'notes', 'completed', 'assignee', 'due_on',
-                    'tags', 'custom_fields', 'created_at', 'modified_at'
-                ]
-            }))
-            return tasks
+            if project_gid:
+                tasks = self.client.get_tasks_for_project(
+                    project_gid=project_gid,
+                    opt_fields=["name", "notes", "completed", "assignee", "due_on"]
+                )
+            else:
+                # Get tasks from all projects
+                tasks = self.client.get_tasks(
+                    opt_fields=["name", "notes", "completed", "assignee", "due_on"]
+                )
+            return [{"gid": t.gid, "name": t.name, "completed": t.completed} for t in tasks.data]
         except Exception as e:
             raise Exception(f"Failed to fetch Asana tasks: {str(e)}")
     
-    async def create_task(self, project_gid: str, task_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_task(self, project_gid: Optional[str], task_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new task in Asana."""
         await self._ensure_initialized()
         try:
-            task = self.client.tasks.create_task({
-                'name': task_data.get('name'),
-                'notes': task_data.get('notes', ''),
-                'projects': [project_gid],
-                'assignee': task_data.get('assignee'),
-                'due_on': task_data.get('due_on'),
-            })
-            return task
+            # Create task request body
+            body = {
+                "data": {
+                    "name": task_data.get('name'),
+                    "notes": task_data.get('notes', ''),
+                }
+            }
+            
+            # Add project if specified
+            if project_gid:
+                body["data"]["projects"] = [project_gid]
+            
+            # Add optional fields
+            if task_data.get('assignee'):
+                body["data"]["assignee"] = task_data.get('assignee')
+            if task_data.get('due_on'):
+                body["data"]["due_on"] = task_data.get('due_on')
+            
+            task = self.client.create_task(body=body)
+            return {"gid": task.data.gid, "name": task.data.name, "created": True}
         except Exception as e:
             raise Exception(f"Failed to create Asana task: {str(e)}")
     
@@ -65,8 +93,9 @@ class AsanaClient:
         """Update an existing task."""
         await self._ensure_initialized()
         try:
-            task = self.client.tasks.update_task(task_gid, updates)
-            return task
+            body = {"data": updates}
+            task = self.client.update_task(task_gid=task_gid, body=body)
+            return {"gid": task.data.gid, "name": task.data.name, "updated": True}
         except Exception as e:
             raise Exception(f"Failed to update Asana task: {str(e)}")
     

@@ -117,10 +117,21 @@ class AIAssistant:
     async def _handle_asana_action(self, action: str, parameters: Dict[str, Any], user_input: str) -> Dict[str, Any]:
         """Handle Asana-specific actions."""
         try:
-            if action == "create_task":
+            if action in ["create_task", "create_new_task"]:
+                # Extract task name from parameters or user input
+                task_name = parameters.get("task_name") or parameters.get("name")
+                if not task_name:
+                    # Extract from user input as fallback
+                    task_name = user_input.replace("Create a task for", "").replace("Create task", "").strip()
+                
+                task_data = {
+                    "name": task_name,
+                    "notes": parameters.get("notes", f"Task created via AI assistant: {user_input}")
+                }
+                
                 task = await self.asana_client.create_task(
                     parameters.get("project_gid"),
-                    parameters.get("task_data")
+                    task_data
                 )
                 return {"action": "task_created", "data": task}
             
