@@ -1,4 +1,4 @@
-# Azure VSCode GitHub Asana Assistant
+# Azure VSCode GitHub Asana Assistant: AI-Powered Cross-Platform Productivity Integration
 
 An AI-powered assistant that seamlessly integrates Asana task management, GitHub repositories, and VSCode development environment, deployed on Azure for scalable cloud access.
 
